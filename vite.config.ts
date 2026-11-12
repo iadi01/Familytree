@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
+import { nitro } from "nitro/vite";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +17,9 @@ export default defineConfig({
     tailwindcss(),
     tanstackStart({
       server: { entry: "server" },
+    }),
+    nitro({
+      preset: process.env.VERCEL ? "vercel" : undefined,
     }),
     viteReact(),
   ],
