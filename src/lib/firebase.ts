@@ -25,29 +25,127 @@ export const firebaseConfig = {
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
-const PHOTOS_COLLECTION = "family_photos";
-const CHILDREN_DOC_REF = () => doc(db, "family_data", "children");
-const BRANCHES_DOC_REF = () => doc(db, "family_data", "custom_branches");
-const DELETED_DOC_REF = () => doc(db, "family_data", "deleted_ids");
+export type TreeMeta = {
+  id: string; // unique slug e.g. "sharma", "verma-family"
+  name: string; // e.g. "Sharma Family Tree"
+  rootName: string; // "Nana"
+  rootSpouse?: string; // "Nani"
+  rootRelation?: string; // "Grandparents" / "Dada & Dadi" / "Nana & Nani"
+  createdAt: number;
+};
+
+const getChildrenDocRef = (treeId: string) =>
+  treeId === "sharma"
+    ? doc(db, "family_data", "children")
+    : doc(db, "trees_data", `${treeId}_children`);
+
+const getBranchesDocRef = (treeId: string) =>
+  treeId === "sharma"
+    ? doc(db, "family_data", "custom_branches")
+    : doc(db, "trees_data", `${treeId}_branches`);
+
+const getDeletedDocRef = (treeId: string) =>
+  treeId === "sharma"
+    ? doc(db, "family_data", "deleted_ids")
+    : doc(db, "trees_data", `${treeId}_deleted_ids`);
+
+/**
+ * Save tree metadata
+ */
+export async function createOrUpdateTree(meta: TreeMeta): Promise<void> {
+  const treeRef = doc(db, "trees_metadata", meta.id);
+  await setDoc(treeRef, meta, { merge: true });
+}
+
+/**
+ * Subscribe to all public / available trees
+ */
+export function subscribeToAllTrees(
+  onUpdate: (trees: TreeMeta[]) => void,
+): () => void {
+  return onSnapshot(
+    collection(db, "trees_metadata"),
+    (snapshot) => {
+      const trees: TreeMeta[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data() as TreeMeta;
+        if (data && data.name) {
+          trees.push(data);
+        }
+      });
+      // Sort newest first
+      trees.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      onUpdate(trees);
+    },
+    (err) => {
+      console.error("Firestore trees_metadata listener error:", err);
+    },
+  );
+}
+
+/**
+ * Subscribe to a specific tree's metadata
+ */
+export function subscribeToTreeMeta(
+  treeId: string,
+  onUpdate: (meta: TreeMeta | null) => void,
+): () => void {
+  const treeRef = doc(db, "trees_metadata", treeId);
+  return onSnapshot(
+    treeRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        onUpdate(snapshot.data() as TreeMeta);
+      } else {
+        onUpdate(null);
+      }
+    },
+    (err) => {
+      console.error(`Firestore tree meta listener error for ${treeId}:`, err);
+    },
+  );
+}
 
 /**
  * Save a family member's photo directly into Firestore.
  */
-export async function uploadFamilyPhoto(memberId: string, base64Photo: string): Promise<string> {
-  const photoDocRef = doc(db, PHOTOS_COLLECTION, memberId);
-  await setDoc(photoDocRef, {
-    photo: base64Photo,
-    updatedAt: Date.now(),
-  });
+export async function uploadFamilyPhoto(
+  memberId: string,
+  base64Photo: string,
+  treeId: string = "sharma",
+): Promise<string> {
+  if (treeId === "sharma") {
+    const photoDocRef = doc(db, "family_photos", memberId);
+    await setDoc(photoDocRef, {
+      photo: base64Photo,
+      updatedAt: Date.now(),
+    });
+  } else {
+    const photoDocRef = doc(db, "trees_photos", `${treeId}__${memberId}`);
+    await setDoc(photoDocRef, {
+      treeId,
+      memberId,
+      photo: base64Photo,
+      updatedAt: Date.now(),
+    });
+  }
   return base64Photo;
 }
 
 /**
  * Remove/reset custom photo for a family member
  */
-export async function removeFamilyPhoto(memberId: string): Promise<void> {
-  const photoDocRef = doc(db, PHOTOS_COLLECTION, memberId);
-  await deleteDoc(photoDocRef);
+export async function removeFamilyPhoto(
+  memberId: string,
+  treeId: string = "sharma",
+): Promise<void> {
+  if (treeId === "sharma") {
+    const photoDocRef = doc(db, "family_photos", memberId);
+    await deleteDoc(photoDocRef);
+  } else {
+    const photoDocRef = doc(db, "trees_photos", `${treeId}__${memberId}`);
+    await deleteDoc(photoDocRef);
+  }
 }
 
 /**
@@ -55,21 +153,46 @@ export async function removeFamilyPhoto(memberId: string): Promise<void> {
  */
 export function subscribeToPhotos(
   onUpdate: (photos: Record<string, string>) => void,
+  treeId: string = "sharma",
 ): () => void {
+  if (treeId === "sharma") {
+    return onSnapshot(
+      collection(db, "family_photos"),
+      (snapshot) => {
+        const photos: Record<string, string> = {};
+        snapshot.forEach((d) => {
+          const data = d.data();
+          if (data && typeof data.photo === "string") {
+            photos[d.id] = data.photo;
+          }
+        });
+        onUpdate(photos);
+      },
+      (err) => {
+        console.error("Firestore photos listener error:", err);
+      },
+    );
+  }
+
+  // Multi-tree photos
   return onSnapshot(
-    collection(db, PHOTOS_COLLECTION),
+    collection(db, "trees_photos"),
     (snapshot) => {
       const photos: Record<string, string> = {};
+      const prefix = `${treeId}__`;
       snapshot.forEach((d) => {
-        const data = d.data();
-        if (data && typeof data.photo === "string") {
-          photos[d.id] = data.photo;
+        if (d.id.startsWith(prefix)) {
+          const rawMemberId = d.id.slice(prefix.length);
+          const data = d.data();
+          if (data && typeof data.photo === "string") {
+            photos[rawMemberId] = data.photo;
+          }
         }
       });
       onUpdate(photos);
     },
     (err) => {
-      console.error("Firestore photos listener error:", err);
+      console.error(`Firestore tree photos listener error for ${treeId}:`, err);
     },
   );
 }
@@ -87,6 +210,7 @@ export type CustomBranch = {
   spouse?: string;
   relation: string;
   img?: string;
+  children?: CustomChild[];
 };
 
 /**
@@ -94,9 +218,10 @@ export type CustomBranch = {
  */
 export function subscribeToChildren(
   onUpdate: (childrenMap: Record<string, CustomChild[]>) => void,
+  treeId: string = "sharma",
 ): () => void {
   return onSnapshot(
-    CHILDREN_DOC_REF(),
+    getChildrenDocRef(treeId),
     (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data() as Record<string, any>;
@@ -112,7 +237,7 @@ export function subscribeToChildren(
       }
     },
     (err) => {
-      console.error("Firestore children listener error:", err);
+      console.error(`Firestore children listener error for ${treeId}:`, err);
     },
   );
 }
@@ -123,13 +248,17 @@ export function subscribeToChildren(
 export async function saveCustomChild(
   parentId: string,
   child: CustomChild,
+  treeId: string = "sharma",
 ): Promise<void> {
-  const docSnap = await getDoc(CHILDREN_DOC_REF());
-  const existing = docSnap.exists() ? (docSnap.data()[parentId] as CustomChild[]) || [] : [];
-  const updated = [...existing.filter(c => c.id !== child.id), child];
+  const targetRef = getChildrenDocRef(treeId);
+  const docSnap = await getDoc(targetRef);
+  const existing = docSnap.exists()
+    ? (docSnap.data()[parentId] as CustomChild[]) || []
+    : [];
+  const updated = [...existing.filter((c) => c.id !== child.id), child];
 
   await setDoc(
-    CHILDREN_DOC_REF(),
+    targetRef,
     {
       [parentId]: updated,
       updatedAt: Date.now(),
@@ -144,13 +273,15 @@ export async function saveCustomChild(
 export async function removeCustomChild(
   parentId: string,
   childId: string,
+  treeId: string = "sharma",
 ): Promise<void> {
-  const docSnap = await getDoc(CHILDREN_DOC_REF());
+  const targetRef = getChildrenDocRef(treeId);
+  const docSnap = await getDoc(targetRef);
   if (docSnap.exists()) {
     const existing = (docSnap.data()[parentId] as CustomChild[]) || [];
-    const updated = existing.filter(c => c.id !== childId);
+    const updated = existing.filter((c) => c.id !== childId);
     await setDoc(
-      CHILDREN_DOC_REF(),
+      targetRef,
       {
         [parentId]: updated,
         updatedAt: Date.now(),
@@ -165,9 +296,10 @@ export async function removeCustomChild(
  */
 export function subscribeToCustomBranches(
   onUpdate: (branches: CustomBranch[]) => void,
+  treeId: string = "sharma",
 ): () => void {
   return onSnapshot(
-    BRANCHES_DOC_REF(),
+    getBranchesDocRef(treeId),
     (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
@@ -177,21 +309,27 @@ export function subscribeToCustomBranches(
       }
     },
     (err) => {
-      console.error("Firestore branches listener error:", err);
+      console.error(`Firestore branches listener error for ${treeId}:`, err);
     },
   );
 }
 
 /**
- * Add a new custom family branch (couple)
+ * Add a new custom family branch (couple or generation 2 child)
  */
-export async function saveCustomBranch(branch: CustomBranch): Promise<void> {
-  const docSnap = await getDoc(BRANCHES_DOC_REF());
-  const existing = docSnap.exists() ? (docSnap.data().branches as CustomBranch[]) || [] : [];
-  const updated = [...existing.filter(b => b.id !== branch.id), branch];
+export async function saveCustomBranch(
+  branch: CustomBranch,
+  treeId: string = "sharma",
+): Promise<void> {
+  const targetRef = getBranchesDocRef(treeId);
+  const docSnap = await getDoc(targetRef);
+  const existing = docSnap.exists()
+    ? (docSnap.data().branches as CustomBranch[]) || []
+    : [];
+  const updated = [...existing.filter((b) => b.id !== branch.id), branch];
 
   await setDoc(
-    BRANCHES_DOC_REF(),
+    targetRef,
     {
       branches: updated,
       updatedAt: Date.now(),
@@ -203,13 +341,17 @@ export async function saveCustomBranch(branch: CustomBranch): Promise<void> {
 /**
  * Remove a custom family branch
  */
-export async function removeCustomBranch(branchId: string): Promise<void> {
-  const docSnap = await getDoc(BRANCHES_DOC_REF());
+export async function removeCustomBranch(
+  branchId: string,
+  treeId: string = "sharma",
+): Promise<void> {
+  const targetRef = getBranchesDocRef(treeId);
+  const docSnap = await getDoc(targetRef);
   if (docSnap.exists()) {
     const existing = (docSnap.data().branches as CustomBranch[]) || [];
-    const updated = existing.filter(b => b.id !== branchId);
+    const updated = existing.filter((b) => b.id !== branchId);
     await setDoc(
-      BRANCHES_DOC_REF(),
+      targetRef,
       {
         branches: updated,
         updatedAt: Date.now(),
@@ -224,9 +366,10 @@ export async function removeCustomBranch(branchId: string): Promise<void> {
  */
 export function subscribeToDeletedIds(
   onUpdate: (deletedIds: Set<string>) => void,
+  treeId: string = "sharma",
 ): () => void {
   return onSnapshot(
-    DELETED_DOC_REF(),
+    getDeletedDocRef(treeId),
     (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
@@ -242,7 +385,7 @@ export function subscribeToDeletedIds(
       }
     },
     (err) => {
-      console.error("Firestore deleted_ids listener error:", err);
+      console.error(`Firestore deleted_ids listener error for ${treeId}:`, err);
     },
   );
 }
@@ -250,9 +393,13 @@ export function subscribeToDeletedIds(
 /**
  * Permanently mark a member or child as deleted
  */
-export async function markMemberDeleted(memberId: string): Promise<void> {
+export async function markMemberDeleted(
+  memberId: string,
+  treeId: string = "sharma",
+): Promise<void> {
+  const targetRef = getDeletedDocRef(treeId);
   await setDoc(
-    DELETED_DOC_REF(),
+    targetRef,
     {
       [memberId]: true,
       updatedAt: Date.now(),
@@ -260,14 +407,18 @@ export async function markMemberDeleted(memberId: string): Promise<void> {
     { merge: true },
   );
   // Also clean up photo if exists
-  await removeFamilyPhoto(memberId);
+  await removeFamilyPhoto(memberId, treeId);
 }
 
 /**
  * Restore a deleted member if needed
  */
-export async function restoreMember(memberId: string): Promise<void> {
-  await updateDoc(DELETED_DOC_REF(), {
+export async function restoreMember(
+  memberId: string,
+  treeId: string = "sharma",
+): Promise<void> {
+  const targetRef = getDeletedDocRef(treeId);
+  await updateDoc(targetRef, {
     [memberId]: deleteField(),
     updatedAt: Date.now(),
   });

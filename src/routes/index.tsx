@@ -1,566 +1,121 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import {
   Heart,
-  Search,
   Plus,
-  Minus,
-  Home,
-  UserPlus,
-  X,
-  Images,
   Users,
-  Bell,
-  Camera,
-  Trash2,
-  RotateCcw,
   Sparkles,
+  ArrowRight,
+  Trees as TreeIcon,
+  ShieldCheck,
+  Search,
+  ExternalLink,
 } from "lucide-react";
-import { familyRoot, firstName, type Member } from "@/lib/family";
-import { nanaImg, naniImg, coupleImgs } from "@/lib/avatars";
-import { Button } from "@/components/ui/button";
-import { Branches, HeartFrame, WoodenSign } from "@/components/family-scenery";
 import gardenImg from "@/assets/family-garden.jpg";
-import { FamilyPhotoPicker } from "@/components/family-photo-picker";
+import { nanaImg, naniImg } from "@/lib/avatars";
 import {
-  subscribeToPhotos,
-  subscribeToChildren,
-  saveCustomChild,
-  removeCustomChild,
-  subscribeToCustomBranches,
-  saveCustomBranch,
-  removeCustomBranch,
-  subscribeToDeletedIds,
-  markMemberDeleted,
-  restoreMember,
-  type CustomChild,
-  type CustomBranch,
+  subscribeToAllTrees,
+  createOrUpdateTree,
+  type TreeMeta,
 } from "@/lib/firebase";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Sharma Family Tree — Rooted in Love" },
+      { title: "Humara Parivar — Create & Celebrate Your Family Tree" },
       {
         name: "description",
         content:
-          "Explore the Sharma family, from Nana and Nani to every little branch, in our illustrated family tree.",
+          "Apna khud ka illustrated family tree banayein ya Sharma Family Tree dekhein. Real-time sync, photo uploads aur mobile-friendly design.",
       },
-      { property: "og:title", content: "Sharma Family Tree — Rooted in Love" },
+      { property: "og:title", content: "Humara Parivar — Family Tree Creator" },
       {
         property: "og:description",
-        content: "Our roots, our strength, our forever — the Sharma family tree.",
+        content: "Rooted in Love, Growing Together across Generations.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: Index,
+  component: IndexHub,
 });
 
-function CoupleCard({
-  member,
-  expanded,
-  highlight,
-  onToggle,
-  onRemove,
-}: {
-  member: Member;
-  expanded: boolean;
-  highlight: boolean;
-  onToggle: () => void;
-  onRemove?: () => void;
-}) {
-  return (
-    <div className="family-couple">
-      {onRemove && (
-        <button
-          type="button"
-          className="couple-remove-btn"
-          title={`${firstName(member.name)} & ${firstName(member.spouse ?? "")} ko hatayein`}
-          aria-label={`Remove ${firstName(member.name)} & ${firstName(member.spouse ?? "")}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove();
-          }}
-        >
-          <Trash2 size={12} />
-        </button>
-      )}
-      <Button
-        variant="plain"
-        size="natural"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        aria-label={`${expanded ? "Collapse" : "Expand"} ${firstName(member.name)} family`}
-        className={`couple-button ${expanded ? "is-expanded" : ""} ${highlight ? "is-match" : ""}`}
-      >
-        <div className="couple-portrait">
-          <img
-            src={member.img || coupleImgs["g2-0"]}
-            alt={`${member.name} and ${member.spouse ?? ""}`}
-            width={992}
-            height={672}
-          />
-          <Heart className="couple-heart fill-primary text-primary" size={18} />
-        </div>
-        <span className="couple-name">
-          {firstName(member.name)} & {firstName(member.spouse ?? "")}
-        </span>
-      </Button>
-      <Button
-        variant="plain"
-        size="natural"
-        className="branch-toggle"
-        onClick={onToggle}
-        aria-label={`${expanded ? "Hide" : "Show"} children of ${firstName(member.name)}`}
-      >
-        {expanded ? <Minus size={18} /> : <Plus size={18} />}
-      </Button>
-    </div>
-  );
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
-function ChildrenPanel({
-  member,
-  term,
-  onAdd,
-  onRemoveChild,
-}: {
-  member: Member;
-  term: string;
-  onAdd: (name: string) => void;
-  onRemoveChild: (childId: string, childName: string) => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
-  return (
-    <div className="children-panel">
-      <span className="panel-flowers left">🌿🌸</span>
-      <span className="panel-flowers right">🌸🌿</span>
-      <h2>
-        <span className="text-primary">♥</span> Our Little Stars{" "}
-        <span className="text-primary">♥</span>
-      </h2>
-      <p className="branch-parent-name">
-        {firstName(member.name)} & {firstName(member.spouse ?? "")}
-      </p>
-      <div className="children-list">
-        {member.children.length === 0 ? (
-          <p className="py-4 text-xs text-muted-foreground">
-            Abhi koi bachcha add nahi hua
-          </p>
-        ) : (
-          member.children.map((child) => (
-            <div
-              id={child.id}
-              key={child.id}
-              className={`child-person ${term && child.name.toLowerCase().includes(term) ? "child-match" : ""}`}
-            >
-              <div className="child-portrait">
-                {child.img ? (
-                  <img
-                    src={child.img}
-                    alt={child.name}
-                    width={816}
-                    height={816}
-                  />
-                ) : (
-                  <span className="font-display text-2xl">
-                    {firstName(child.name)[0]}
-                  </span>
-                )}
-              </div>
-              <button
-                type="button"
-                className="child-remove-btn"
-                title={`${firstName(child.name)} ko hatayein`}
-                aria-label={`Remove ${firstName(child.name)}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveChild(child.id, child.name);
-                }}
-              >
-                <Trash2 size={11} />
-              </button>
-              <span className="child-name">{firstName(child.name)}</span>
-            </div>
-          ))
-        )}
-      </div>
-      {adding ? (
-        <form
-          className="mt-3 flex gap-1"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (name.trim()) {
-              onAdd(name.trim());
-              setName("");
-              setAdding(false);
-            }
-          }}
-        >
-          <input
-            aria-label="Child name"
-            autoFocus
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Naam"
-            className="min-w-0 flex-1 rounded-full border border-input bg-card px-3 py-1 text-xs outline-none focus:ring-2 focus:ring-ring"
-          />
-          <Button
-            type="submit"
-            size="sm"
-            className="h-7 rounded-full px-2 text-xs"
-          >
-            Add
-          </Button>
-          <Button
-            variant="ghost"
-            size="natural"
-            aria-label="Cancel adding child"
-            onClick={() => setAdding(false)}
-          >
-            <X size={14} />
-          </Button>
-        </form>
-      ) : (
-        <Button
-          variant="secondary"
-          size="natural"
-          className="add-child"
-          onClick={() => setAdding(true)}
-        >
-          <Plus size={16} /> Add Child
-        </Button>
-      )}
-    </div>
-  );
-}
+function IndexHub() {
+  const navigate = useNavigate();
+  const [trees, setTrees] = useState<TreeMeta[]>([]);
 
-function Index() {
-  const [root] = useState(familyRoot);
-  const [open, setOpen] = useState(new Set(["g2-5"]));
-  const [zoom, setZoom] = useState(1);
-  const [query, setQuery] = useState("");
-  const [dialog, setDialog] = useState<
-    "story" | "gallery" | "add" | "photos" | null
-  >(null);
-  const [addTab, setAddTab] = useState<"child" | "branch" | "manage">("child");
-  const [photos, setPhotos] = useState<Record<string, string>>({});
-  const [customChildren, setCustomChildren] = useState<
-    Record<string, CustomChild[]>
-  >({});
-  const [customBranches, setCustomBranches] = useState<CustomBranch[]>([]);
-  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  // Create form state
+  const [familyName, setFamilyName] = useState("");
+  const [root1, setRoot1] = useState("");
+  const [root2, setRoot2] = useState("");
+  const [rootRelation, setRootRelation] = useState("Nana & Nani");
+  const [customSlug, setCustomSlug] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form states
-  const [parent, setParent] = useState("g2-5");
-  const [newName, setNewName] = useState("");
-  const [branchName, setBranchName] = useState("");
-  const [branchSpouse, setBranchSpouse] = useState("");
-  const [branchRelation, setBranchRelation] = useState("Moushi");
-  const [manageQuery, setManageQuery] = useState("");
-  const tree = useRef<HTMLDivElement>(null);
+  // Search/open existing code
+  const [openCode, setOpenCode] = useState("");
 
   useEffect(() => {
-    // Realtime sync from Firebase Firestore
-    const unsubPhotos = subscribeToPhotos((livePhotos) => {
-      setPhotos(livePhotos);
+    const unsub = subscribeToAllTrees((liveTrees) => {
+      setTrees(liveTrees);
     });
-    const unsubChildren = subscribeToChildren((liveChildren) => {
-      setCustomChildren(liveChildren);
-    });
-    const unsubBranches = subscribeToCustomBranches((liveBranches) => {
-      setCustomBranches(liveBranches);
-    });
-    const unsubDeleted = subscribeToDeletedIds((liveDeleted) => {
-      setDeletedIds(liveDeleted);
-    });
-    return () => {
-      unsubPhotos();
-      unsubChildren();
-      unsubBranches();
-      unsubDeleted();
-    };
+    return () => unsub();
   }, []);
 
-  const centerTree = (behavior: ScrollBehavior = "smooth") => {
-    const element = tree.current;
-    if (element)
-      element.scrollTo({
-        left: (element.scrollWidth - element.clientWidth) / 2,
-        behavior,
-      });
-  };
-  useEffect(() => {
-    centerTree("instant");
-  }, []);
-  const term = query.trim().toLowerCase();
-
-  // Combine base branches + custom branches from Firestore
-  const baseBranches: Member[] = root.children;
-  const customBranchesFormatted: Member[] = customBranches.map((b) => ({
-    id: b.id,
-    name: b.name,
-    spouse: b.spouse,
-    relation: b.relation || "Parivaar",
-    img: b.img,
-    children: (b.children || []).map((c) => ({
-      id: c.id,
-      name: c.name,
-      relation: c.relation || "Child",
-      img: c.img,
-      children: [],
-    })),
-  }));
-
-  const allBranches = [...baseBranches, ...customBranchesFormatted];
-
-  // Filter out any deleted branch or child
-  const activeBranches = allBranches
-    .filter((member) => !deletedIds.has(member.id))
-    .map((member) => {
-      const extra = customChildren[member.id] || [];
-      const baseKidIds = new Set(member.children.map((c) => c.id));
-      const combinedChildren = [
-        ...member.children,
-        ...extra
-          .filter((c) => !baseKidIds.has(c.id))
-          .map((c) => ({
-            id: c.id,
-            name: c.name,
-            relation: c.relation || "Child",
-            img: c.img,
-            children: [] as Member[],
-          })),
-      ];
-
-      return {
-        ...member,
-        children: combinedChildren.filter((child) => !deletedIds.has(child.id)),
-      };
-    });
-
-  const mergedRoot: Member = {
-    ...root,
-    children: activeBranches,
+  // Auto-slugify when family name changes
+  const handleFamilyNameChange = (name: string) => {
+    setFamilyName(name);
+    if (!customSlug || customSlug === slugify(familyName)) {
+      setCustomSlug(slugify(name));
+    }
   };
 
-  const displayRoot: Member = {
-    ...mergedRoot,
-    children: mergedRoot.children.map((member) => ({
-      ...member,
-      img: photos[member.id] ?? member.img,
-      children: member.children.map((child) => ({
-        ...child,
-        img: photos[child.id] ?? child.img,
-      })),
-    })),
-  };
+  const handleCreateTree = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!familyName.trim() || !root1.trim()) return;
 
-  const photoPeople = [
-    { id: "nana", name: mergedRoot.name, image: nanaImg },
-    { id: "nani", name: mergedRoot.spouse ?? "Nani", image: naniImg },
-    ...mergedRoot.children.flatMap((member) => [
-      {
-        id: member.id,
-        name: `${member.name} & ${member.spouse ?? ""}`,
-        image: member.img,
-      },
-      ...member.children.map((child) => ({
-        id: child.id,
-        name: child.name,
-        image: child.img,
-      })),
-    ]),
-  ];
+    setIsSubmitting(true);
+    const finalSlug = slugify(customSlug || familyName) || `family-${Date.now()}`;
 
-  const changePhoto = (id: string, photo?: string) =>
-    setPhotos((previous) => {
-      const next = { ...previous };
-      if (photo) next[id] = photo;
-      else delete next[id];
-      return next;
-    });
-
-  useEffect(() => {
-    if (!term) return;
-    const found = mergedRoot.children.find((member) =>
-      [
-        member.name,
-        member.spouse ?? "",
-        ...member.children.map((child) => child.name),
-      ].some((name) => name.toLowerCase().includes(term)),
-    );
-    const child = found?.children.find((member) =>
-      member.name.toLowerCase().includes(term),
-    );
-    const target = child?.id ?? found?.id ?? "family-root";
-    document.getElementById(target)?.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "center",
-    });
-  }, [term, open, mergedRoot]);
-
-  const matches = (member: Member) =>
-    Boolean(term) &&
-    [
-      member.name,
-      member.spouse ?? "",
-      ...member.children.map((child) => child.name),
-    ].some((name) => name.toLowerCase().includes(term));
-
-  const toggle = (id: string) =>
-    setOpen((previous) => {
-      const next = new Set(previous);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const addChild = async (parentId: string, name: string) => {
-    if (!name.trim()) return;
-    const newChild: CustomChild = {
-      id: `${parentId}-${Date.now()}`,
-      name: name.trim(),
-      relation: "Child",
+    const newTreeMeta: TreeMeta = {
+      id: finalSlug,
+      name: familyName.trim(),
+      rootName: root1.trim(),
+      rootSpouse: root2.trim() || undefined,
+      rootRelation: rootRelation || "Grandparents",
+      createdAt: Date.now(),
     };
+
     try {
-      await saveCustomChild(parentId, newChild);
-      setOpen((prev) => new Set([...prev, parentId]));
-      setNewName("");
-      setDialog(null);
+      await createOrUpdateTree(newTreeMeta);
+      navigate({ to: "/tree/$treeId", params: { treeId: finalSlug } });
     } catch (err) {
-      console.error("Save custom child failed:", err);
-      alert("Bachha add karne me samasya aayi. Kripya punah koshish karein.");
+      console.error("Error creating tree:", err);
+      alert("Tree create karne me samasya aayi. Kripya punah prayas karein.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const addBranch = async (name: string, spouse: string, relation: string) => {
-    if (!name.trim()) return;
-    const newBranch: CustomBranch = {
-      id: `branch-${Date.now()}`,
-      name: name.trim(),
-      spouse: spouse.trim() || undefined,
-      relation: relation.trim() || "Parivaar",
-    };
-    try {
-      await saveCustomBranch(newBranch);
-      setOpen((prev) => new Set([...prev, newBranch.id]));
-      setBranchName("");
-      setBranchSpouse("");
-      setDialog(null);
-    } catch (err) {
-      console.error("Save custom branch failed:", err);
-      alert("Parivaar couple add karne me samasya aayi. Kripya punah koshish karein.");
-    }
+  const handleOpenByCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = slugify(openCode);
+    if (!code) return;
+    navigate({ to: "/tree/$treeId", params: { treeId: code } });
   };
-
-  const handleRemoveBranch = async (branchId: string, branchName: string) => {
-    const ok = window.confirm(
-      `Kya aap sach me "${branchName}" ka parivaar hatana chahte hain?`,
-    );
-    if (!ok) return;
-    try {
-      if (customBranches.some((b) => b.id === branchId)) {
-        await removeCustomBranch(branchId);
-      }
-      await markMemberDeleted(branchId);
-    } catch (err) {
-      console.error("Remove branch failed:", err);
-      alert("Branch hatane me samasya aayi.");
-    }
-  };
-
-  const handleRemoveChild = async (
-    parentId: string,
-    childId: string,
-    childName: string,
-  ) => {
-    const ok = window.confirm(
-      `Kya aap sach me "${childName}" ko hatana chahte hain?`,
-    );
-    if (!ok) return;
-    try {
-      await removeCustomChild(parentId, childId);
-      await markMemberDeleted(childId);
-    } catch (err) {
-      console.error("Remove child failed:", err);
-      alert("Bachha hatane me samasya aayi.");
-    }
-  };
-
-  const handleRestore = async (id: string) => {
-    try {
-      await restoreMember(id);
-    } catch (err) {
-      console.error("Restore failed:", err);
-      alert("Restore karne me samasya aayi.");
-    }
-  };
-
-  const reset = () => {
-    setZoom(1);
-    requestAnimationFrame(() => centerTree());
-  };
-
-  const search = (value: string) => {
-    setQuery(value);
-    const found = root.children.find((member) =>
-      [
-        member.name,
-        member.spouse ?? "",
-        ...member.children.map((child) => child.name),
-      ].some(
-        (name) =>
-          value.trim() &&
-          name.toLowerCase().includes(value.trim().toLowerCase()),
-      ),
-    );
-    if (found) setOpen((previous) => new Set([...previous, found.id]));
-  };
-
-  // Compile list of all people for Manage/Remove tab
-  const allKnownPeople = [
-    ...allBranches.map((b) => ({
-      id: b.id,
-      name: `${b.name}${b.spouse ? ` & ${b.spouse}` : ""}`,
-      relation: b.relation || "Couple",
-      img: photos[b.id] ?? b.img,
-      type: "branch" as const,
-      parentId: "root",
-      isDeleted: deletedIds.has(b.id),
-    })),
-    ...allBranches.flatMap((b) => {
-      const extra = customChildren[b.id] || [];
-      const baseKidIds = new Set(b.children.map((c) => c.id));
-      const combined = [
-        ...b.children,
-        ...extra.filter((c) => !baseKidIds.has(c.id)),
-      ];
-      return combined.map((k) => ({
-        id: k.id,
-        name: k.name,
-        relation: `Child of ${firstName(b.name)}`,
-        img: photos[k.id] ?? k.img,
-        type: "child" as const,
-        parentId: b.id,
-        isDeleted: deletedIds.has(k.id),
-      }));
-    }),
-  ];
-
-  const filteredManagePeople = allKnownPeople.filter((p) =>
-    manageQuery.trim()
-      ? p.name.toLowerCase().includes(manageQuery.trim().toLowerCase())
-      : true,
-  );
 
   return (
-    <div className="family-page">
+    <div className="hub-page">
       <img
         className="garden-background"
         src={gardenImg}
@@ -568,535 +123,280 @@ function Index() {
         width={1920}
         height={1088}
       />
-      <header className="family-header">
-        <div className="family-brand">
-          <span aria-hidden="true">🌳</span>
-          <h1>
-            Sharma
-            <br />
-            Family Tree
-          </h1>
+
+      {/* Hub Top Bar */}
+      <header className="hub-header">
+        <div className="hub-brand">
+          <span className="text-4xl">🌳</span>
+          <div>
+            <h1 className="text-2xl font-bold font-display leading-tight">
+              Humara Parivar
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              Illustrated Family Tree Platform
+            </p>
+          </div>
         </div>
-        <nav className="family-nav" aria-label="Main navigation">
+
+        <div className="flex items-center gap-3">
           <Button
-            variant="plain"
-            size="natural"
-            className="nav-active"
-            onClick={reset}
+            variant="secondary"
+            className="rounded-full shadow-sm text-xs font-semibold"
+            onClick={() =>
+              navigate({ to: "/tree/$treeId", params: { treeId: "sharma" } })
+            }
           >
-            <Home size={17} /> Home
+            🌸 Sharma Tree Kholein
           </Button>
-          <Button
-            variant="plain"
-            size="natural"
-            onClick={() => setDialog("story")}
-          >
-            <Heart size={17} /> Our Story
-          </Button>
-          <Button variant="plain" size="natural" onClick={reset}>
-            <Users size={18} /> Family Tree
-          </Button>
-          <Button
-            variant="plain"
-            size="natural"
-            onClick={() => setDialog("gallery")}
-          >
-            <Images size={17} /> Gallery
-          </Button>
-        </nav>
-        <div className="family-search">
-          <Search size={18} />
-          <input
-            aria-label="Search family member"
-            value={query}
-            onChange={(event) => search(event.target.value)}
-            placeholder="Search family member..."
-          />
-          {query && (
-            <Button
-              variant="plain"
-              size="natural"
-              aria-label="Clear search"
-              onClick={() => setQuery("")}
-            >
-              <X size={16} />
-            </Button>
-          )}
         </div>
-        <span className="header-bell" aria-hidden="true">
-          <Bell size={20} />
-          <i />
-        </span>
-        <Button
-          variant="secondary"
-          size="icon"
-          className="photo-toolbar-button"
-          title="Family Photos"
-          aria-label="Family Photos"
-          onClick={() => setDialog("photos")}
-        >
-          <Camera size={20} />
-        </Button>
-        <Button
-          className="add-member"
-          onClick={() => {
-            setAddTab("child");
-            setDialog("add");
-          }}
-        >
-          <UserPlus size={18} />
-          <span>Add / Manage</span>
-        </Button>
-        <span className="header-heart" aria-hidden="true">
-          💗
-        </span>
       </header>
-      <main className="family-main">
-        <WoodenSign />
-        <div className="cloud-message" aria-hidden="true">
-          Generations
-          <br />
-          grow, but love
-          <br />
-          always stays<span>♥</span>
+
+      {/* Hero Section */}
+      <main className="hub-main-container">
+        <div className="hub-hero-banner">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary text-primary font-bold text-xs shadow-sm mb-3">
+            <Sparkles size={14} /> Har Parivaar Ki Apni Kahani
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-extrabold font-display leading-snug">
+            Apna Khud Ka Family Tree Banayein
+          </h2>
+          <p className="mt-2 text-sm sm:text-base text-muted-foreground max-w-xl mx-auto">
+            Nana-Nani, Dada-Dadi se lekar sabhi dampati aur nanhe sitaron tak —
+            apne parivaar ko ek sundar, real-time tree me sanjoyein.
+          </p>
         </div>
-        <div className="floating-heart one" aria-hidden="true">
-          ♥
-        </div>
-        <div className="floating-heart two" aria-hidden="true">
-          ♥
-        </div>
-        <div className="zoom-controls" aria-label="Tree zoom">
-          <Button
-            variant="plain"
-            size="natural"
-            title="Zoom in"
-            aria-label="Zoom in"
-            onClick={() => setZoom((value) => Math.min(1.6, value + 0.1))}
-          >
-            <Plus size={21} />
-          </Button>
-          <Button
-            variant="plain"
-            size="natural"
-            title="Zoom out"
-            aria-label="Zoom out"
-            onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}
-          >
-            <Minus size={21} />
-          </Button>
-          <Button
-            variant="plain"
-            size="natural"
-            title="Reset view"
-            aria-label="Reset view"
-            onClick={reset}
-          >
-            <Home size={20} />
-          </Button>
-        </div>
-        <div className="tree-scroll" ref={tree}>
-          <div
-            className="tree-canvas"
-            style={{ "--user-zoom": zoom } as CSSProperties}
-          >
-            <div id="family-root" className="grandparents">
-              <HeartFrame />
-              <span className="root-botanical left" aria-hidden="true">
-                🌿<span>🌸</span>🌿
-              </span>
-              <span className="root-botanical right" aria-hidden="true">
-                🌿<span>🌸</span>🌿
-              </span>
-              <div className="grandparent-pair">
-                {[
-                  { name: root.name, img: photos["nana"] ?? nanaImg },
-                  {
-                    name: root.spouse ?? "Nani",
-                    img: photos["nani"] ?? naniImg,
-                  },
-                ].map((person) => (
-                  <div className="grandparent" key={person.name}>
-                    <div
-                      className={`grandparent-portrait ${matches(root) ? "is-match" : ""}`}
-                    >
-                      <img
-                        src={person.img}
-                        alt={person.name}
-                        width={816}
-                        height={816}
-                      />
-                    </div>
-                    <span>{person.name}</span>
-                  </div>
-                ))}
-                <span className="grandparent-love" aria-hidden="true">
-                  💗
+
+        {/* Action Grid */}
+        <div className="hub-grid">
+          {/* Card 1: Create New Tree */}
+          <div className="hub-card primary-card">
+            <div className="hub-card-header">
+              <div className="hub-icon-bubble bg-primary text-primary-foreground">
+                <Plus size={22} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold">Naya Tree Banayein</h3>
+                <p className="text-xs text-muted-foreground">
+                  Create your own family tree in 30 seconds
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleCreateTree} className="hub-form">
+              <label className="flex flex-col gap-1.5 text-xs font-semibold">
+                Parivaar ka Naam (Family Name) *
+                <input
+                  required
+                  value={familyName}
+                  onChange={(e) => handleFamilyNameChange(e.target.value)}
+                  placeholder="Udaharan: Verma Family Tree, Gupta Parivaar"
+                  className="hub-input"
+                />
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1.5 text-xs font-semibold">
+                  Mukhya / Nana / Dada ka Naam *
+                  <input
+                    required
+                    value={root1}
+                    onChange={(e) => setRoot1(e.target.value)}
+                    placeholder="Udaharan: Ramesh Sharma"
+                    className="hub-input"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1.5 text-xs font-semibold">
+                  Nani / Dadi / Patni ka Naam
+                  <input
+                    value={root2}
+                    onChange={(e) => setRoot2(e.target.value)}
+                    placeholder="Udaharan: Geeta Sharma"
+                    className="hub-input"
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1.5 text-xs font-semibold">
+                  Rishta (Title of Roots)
+                  <select
+                    value={rootRelation}
+                    onChange={(e) => setRootRelation(e.target.value)}
+                    className="hub-input"
+                  >
+                    <option value="Nana & Nani">Nana & Nani</option>
+                    <option value="Dada & Dadi">Dada & Dadi</option>
+                    <option value="Grandparents">Grandparents</option>
+                    <option value="Mata & Pita">Mata & Pita (Parents)</option>
+                  </select>
+                </label>
+
+                <label className="flex flex-col gap-1.5 text-xs font-semibold">
+                  Tree Code / URL Link
+                  <input
+                    value={customSlug}
+                    onChange={(e) => setCustomSlug(slugify(e.target.value))}
+                    placeholder="verma-family"
+                    className="hub-input font-mono text-xs"
+                  />
+                </label>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full rounded-full py-5 text-sm font-bold shadow-md mt-2 flex items-center justify-center gap-2"
+              >
+                <Sparkles size={16} />
+                <span>
+                  {isSubmitting
+                    ? "Tree Banaya Ja Raha Hai..."
+                    : "Apna Tree Banayein & Kholein"}
                 </span>
+                <ArrowRight size={16} />
+              </Button>
+            </form>
+          </div>
+
+          {/* Card 2: Featured Sharma Family Tree */}
+          <div className="hub-card featured-card">
+            <div className="hub-card-header">
+              <div className="hub-icon-bubble bg-pink-500 text-white">
+                <Heart size={20} />
               </div>
-              <div className="roots-ribbon">
-                <span>♥</span> Our Roots <span className="ribbon-dot">·</span>{" "}
-                Our Strength <span className="ribbon-dot">·</span> Our Forever{" "}
-                <span>♥</span>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-pink-700 bg-pink-100 px-2 py-0.5 rounded-full">
+                  Featured Family Tree
+                </span>
+                <h3 className="text-xl font-bold mt-1">Sharma Family Tree</h3>
               </div>
             </div>
-            <Branches />
-            <div className="couples-row">
-              {displayRoot.children.map((member) => (
-                <div id={member.id} key={member.id}>
-                  <CoupleCard
-                    member={member}
-                    expanded={open.has(member.id)}
-                    highlight={matches(member)}
-                    onToggle={() => toggle(member.id)}
-                    onRemove={() =>
-                      handleRemoveBranch(
-                        member.id,
-                        `${firstName(member.name)} & ${firstName(member.spouse ?? "")}`,
-                      )
-                    }
-                  />
-                </div>
-              ))}
+
+            <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+              Nana & Nani ki chhatra-chhaya me Sharma parivaar ke sabhi 10 dampati
+              (Moushi, Mama) aur unke nanhe sitaron ki puri kahani.
+            </p>
+
+            <div className="featured-grandparents-preview">
+              <div className="featured-avatar">
+                <img src={nanaImg} alt="Nana" />
+                <span>Nana</span>
+              </div>
+              <span className="text-xl text-primary animate-pulse">💗</span>
+              <div className="featured-avatar">
+                <img src={naniImg} alt="Nani" />
+                <span>Nani</span>
+              </div>
             </div>
-            <div
-              className={`expanded-branches ${open.size === 1 ? "single-branch" : ""}`}
+
+            <Button
+              className="w-full rounded-full py-5 text-sm font-bold shadow-md mt-auto flex items-center justify-center gap-2 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white"
+              onClick={() =>
+                navigate({ to: "/tree/$treeId", params: { treeId: "sharma" } })
+              }
             >
-              {displayRoot.children
-                .filter((member) => open.has(member.id))
-                .map((member) => (
-                  <ChildrenPanel
-                    key={member.id}
-                    member={member}
-                    term={term}
-                    onAdd={(name) => addChild(member.id, name)}
-                    onRemoveChild={(childId, childName) =>
-                      handleRemoveChild(member.id, childId, childName)
-                    }
-                  />
-                ))}
+              <span>Sharma Family Tree Kholein</span>
+              <ExternalLink size={16} />
+            </Button>
+          </div>
+
+          {/* Card 3: Enter Code / Open Existing */}
+          <div className="hub-card">
+            <div className="hub-card-header">
+              <div className="hub-icon-bubble bg-amber-600 text-white">
+                <Search size={20} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold">Kisi Ka Tree Kholein</h3>
+                <p className="text-xs text-muted-foreground">
+                  Open any family tree with Tree Code
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleOpenByCode} className="hub-form mt-2">
+              <label className="flex flex-col gap-1.5 text-xs font-semibold">
+                Tree Code / Slug daalein:
+                <input
+                  required
+                  value={openCode}
+                  onChange={(e) => setOpenCode(e.target.value)}
+                  placeholder="Udaharan: sharma, gupta-family"
+                  className="hub-input font-mono text-sm"
+                />
+              </label>
+
+              <Button
+                type="submit"
+                variant="secondary"
+                className="w-full rounded-full py-5 text-sm font-bold shadow-sm flex items-center justify-center gap-2 mt-1"
+              >
+                <span>Tree Kholein (Open)</span>
+                <ArrowRight size={16} />
+              </Button>
+            </form>
+
+            {/* List of created trees */}
+            <div className="mt-4 pt-4 border-t border-border">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                Available Trees ({trees.length + 1})
+              </p>
+              <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
+                <button
+                  type="button"
+                  className="hub-tree-item"
+                  onClick={() =>
+                    navigate({
+                      to: "/tree/$treeId",
+                      params: { treeId: "sharma" },
+                    })
+                  }
+                >
+                  <div className="text-left">
+                    <div className="text-xs font-bold">🌸 Sharma Family Tree</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      Code: sharma · Nana & Nani
+                    </div>
+                  </div>
+                  <ArrowRight size={14} className="text-muted-foreground" />
+                </button>
+
+                {trees
+                  .filter((t) => t.id !== "sharma")
+                  .map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className="hub-tree-item"
+                      onClick={() =>
+                        navigate({
+                          to: "/tree/$treeId",
+                          params: { treeId: t.id },
+                        })
+                      }
+                    >
+                      <div className="text-left">
+                        <div className="text-xs font-bold">🌳 {t.name}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          Code: {t.id} · {t.rootName}
+                          {t.rootSpouse ? ` & ${t.rootSpouse}` : ""}
+                        </div>
+                      </div>
+                      <ArrowRight size={14} className="text-muted-foreground" />
+                    </button>
+                  ))}
+              </div>
             </div>
           </div>
         </div>
-        <WoodenSign bottom />
-        <div className="direction-signs" aria-hidden="true">
-          <span>♥ Family ♥</span>
-          <span>Memories ♥</span>
-          <span>♥ Forever ♥</span>
-        </div>
       </main>
-      <footer className="family-footer">
-        <h2>The Sharma Family</h2>
-        <p>
-          Rooted in Love <span>♥</span> Growing Together <span>♥</span> Always
-          Home
-        </p>
-        <p className="mt-1 text-xs opacity-80">
-          Humara Parivar · Crafted with ♥ by Humna
+
+      <footer className="hub-footer">
+        <p className="text-xs text-muted-foreground">
+          Humara Parivar · Har Peedhi Ka Pyaar · Crafted with ♥ by Humna
         </p>
       </footer>
-      <Dialog.Root
-        open={dialog !== null}
-        onOpenChange={(value) => {
-          if (!value) setDialog(null);
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="dialog-backdrop" />
-          <Dialog.Content className="family-dialog" aria-describedby={undefined}>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute right-2 top-2"
-              aria-label="Close"
-              onClick={() => setDialog(null)}
-            >
-              <X size={18} />
-            </Button>
-            <Dialog.Title className="mb-4 text-2xl font-semibold">
-              {dialog === "photos"
-                ? "Our Family Photos"
-                : dialog === "add"
-                  ? "Family Members & Branches"
-                  : dialog === "story"
-                    ? "The Sharma Family"
-                    : "Family Gallery"}
-            </Dialog.Title>
-
-            {dialog === "photos" ? (
-              <FamilyPhotoPicker
-                people={photoPeople}
-                photos={photos}
-                onPhoto={changePhoto}
-              />
-            ) : dialog === "story" ? (
-              <div className="text-center">
-                <span className="text-5xl">🌳</span>
-                <p className="mt-4 font-semibold text-lg">Nana & Nani</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Our Roots · Our Strength · Our Forever
-                </p>
-                <div className="mt-5 flex flex-wrap justify-center gap-2">
-                  {mergedRoot.children.map((member) => (
-                    <span
-                      className="rounded-full bg-secondary px-3 py-1 text-sm"
-                      key={member.id}
-                    >
-                      {firstName(member.name)} & {firstName(member.spouse ?? "")}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : dialog === "gallery" ? (
-              <>
-                <Button
-                  variant="secondary"
-                  className="mb-4"
-                  onClick={() => setDialog("photos")}
-                >
-                  <Camera size={16} />
-                  Add Photos
-                </Button>
-                <div className="grid grid-cols-3 gap-3">
-                  {photoPeople.map((person) => (
-                    <figure key={person.id}>
-                      {photos[person.id] ?? person.image ? (
-                        <img
-                          src={photos[person.id] ?? person.image}
-                          alt={person.name}
-                          className="gallery-photo"
-                        />
-                      ) : (
-                        <div className="gallery-photo grid place-items-center bg-secondary">
-                          <Camera size={24} />
-                        </div>
-                      )}
-                      <figcaption className="mt-1 text-center text-xs font-medium">
-                        {person.name}
-                      </figcaption>
-                    </figure>
-                  ))}
-                </div>
-              </>
-            ) : (
-              /* Add & Manage Members Dialog */
-              <div>
-                <div className="dialog-tabs-nav">
-                  <button
-                    type="button"
-                    className={`dialog-tab-btn ${addTab === "child" ? "active" : ""}`}
-                    onClick={() => setAddTab("child")}
-                  >
-                    <Plus size={13} className="inline mr-1" />
-                    Bachha Jodein
-                  </button>
-                  <button
-                    type="button"
-                    className={`dialog-tab-btn ${addTab === "branch" ? "active" : ""}`}
-                    onClick={() => setAddTab("branch")}
-                  >
-                    <Sparkles size={13} className="inline mr-1" />
-                    Naya Parivaar
-                  </button>
-                  <button
-                    type="button"
-                    className={`dialog-tab-btn ${addTab === "manage" ? "active" : ""}`}
-                    onClick={() => setAddTab("manage")}
-                  >
-                    <Trash2 size={13} className="inline mr-1" />
-                    Sadasya Hatao ({deletedIds.size > 0 ? `${deletedIds.size} deleted` : "Manage"})
-                  </button>
-                </div>
-
-                {addTab === "child" ? (
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      if (!newName.trim()) return;
-                      addChild(parent, newName.trim());
-                    }}
-                    className="flex flex-col gap-4"
-                  >
-                    <label className="flex flex-col gap-2 text-sm font-medium">
-                      Kiske Parivaar me jodein? (Family branch)
-                      <select
-                        value={parent}
-                        onChange={(event) => setParent(event.target.value)}
-                        className="rounded-lg border bg-card p-3 text-sm outline-none"
-                      >
-                        {mergedRoot.children.map((member) => (
-                          <option key={member.id} value={member.id}>
-                            {firstName(member.name)} &{" "}
-                            {firstName(member.spouse ?? "")} ({member.relation})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-2 text-sm font-medium">
-                      Bachhe ka naam (Child's Name)
-                      <input
-                        required
-                        value={newName}
-                        onChange={(event) => setNewName(event.target.value)}
-                        placeholder="Udaharan: Aarav, Anaya..."
-                        className="rounded-lg border bg-card p-3 text-sm outline-none"
-                      />
-                    </label>
-                    <Button type="submit" className="rounded-full mt-2">
-                      <Plus size={16} /> Bachha Jodein (Add Child)
-                    </Button>
-                  </form>
-                ) : addTab === "branch" ? (
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      if (!branchName.trim()) return;
-                      addBranch(branchName, branchSpouse, branchRelation);
-                    }}
-                    className="flex flex-col gap-4"
-                  >
-                    <label className="flex flex-col gap-2 text-sm font-medium">
-                      Sadasya ka naam (Member Name) *
-                      <input
-                        required
-                        value={branchName}
-                        onChange={(event) => setBranchName(event.target.value)}
-                        placeholder="Udaharan: Rohan Sharma"
-                        className="rounded-lg border bg-card p-3 text-sm outline-none"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-2 text-sm font-medium">
-                      Pati / Patni ka naam (Spouse Name)
-                      <input
-                        value={branchSpouse}
-                        onChange={(event) => setBranchSpouse(event.target.value)}
-                        placeholder="Udaharan: Pooja Sharma"
-                        className="rounded-lg border bg-card p-3 text-sm outline-none"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-2 text-sm font-medium">
-                      Rishta (Relation / Title)
-                      <select
-                        value={branchRelation}
-                        onChange={(event) => setBranchRelation(event.target.value)}
-                        className="rounded-lg border bg-card p-3 text-sm outline-none"
-                      >
-                        <option value="Moushi">Moushi / Mausa</option>
-                        <option value="Mama">Mama / Mami</option>
-                        <option value="Chacha">Chacha / Chachi</option>
-                        <option value="Bhaiya">Bhaiya / Bhabhi</option>
-                        <option value="Didi">Didi / Jiju</option>
-                        <option value="Beta">Beta / Bahu</option>
-                        <option value="Parivaar">Parivaar (Other)</option>
-                      </select>
-                    </label>
-                    <Button type="submit" className="rounded-full mt-2">
-                      <Sparkles size={16} /> Naya Parivaar Jodein (Add Branch)
-                    </Button>
-                  </form>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    <input
-                      value={manageQuery}
-                      onChange={(e) => setManageQuery(e.target.value)}
-                      placeholder="Sadasya ka naam khojein..."
-                      className="rounded-lg border bg-card p-2 text-xs outline-none"
-                    />
-
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      Active Members ({filteredManagePeople.filter((p) => !p.isDeleted).length})
-                    </p>
-
-                    <div className="member-manage-list">
-                      {filteredManagePeople
-                        .filter((p) => !p.isDeleted)
-                        .map((person) => (
-                          <div key={person.id} className="member-manage-card">
-                            <div className="member-manage-info">
-                              <div className="member-manage-avatar">
-                                {person.img ? (
-                                  <img src={person.img} alt="" />
-                                ) : (
-                                  person.name[0]
-                                )}
-                              </div>
-                              <div>
-                                <div className="text-xs font-bold leading-tight">
-                                  {person.name}
-                                </div>
-                                <div className="text-[10px] text-muted-foreground">
-                                  {person.relation}
-                                </div>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="member-delete-btn"
-                              onClick={() => {
-                                if (person.type === "branch") {
-                                  handleRemoveBranch(person.id, person.name);
-                                } else {
-                                  handleRemoveChild(
-                                    person.parentId,
-                                    person.id,
-                                    person.name,
-                                  );
-                                }
-                              }}
-                            >
-                              <Trash2 size={12} />
-                              Hatao
-                            </button>
-                          </div>
-                        ))}
-                    </div>
-
-                    {deletedIds.size > 0 && (
-                      <div className="mt-2 border-t pt-2">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                          Hataaye gaye sadasya (Deleted)
-                        </p>
-                        <div className="member-manage-list">
-                          {filteredManagePeople
-                            .filter((p) => p.isDeleted)
-                            .map((person) => (
-                              <div
-                                key={person.id}
-                                className="member-manage-card opacity-70"
-                              >
-                                <div className="member-manage-info">
-                                  <div className="member-manage-avatar">
-                                    {person.name[0]}
-                                  </div>
-                                  <div>
-                                    <div className="text-xs font-bold line-through">
-                                      {person.name}
-                                    </div>
-                                    <div className="text-[10px] text-muted-foreground">
-                                      {person.relation}
-                                    </div>
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  className="member-restore-btn"
-                                  onClick={() => handleRestore(person.id)}
-                                >
-                                  <RotateCcw size={12} />
-                                  Wapas Layein
-                                </button>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
     </div>
   );
 }
