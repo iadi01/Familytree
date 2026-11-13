@@ -139,8 +139,10 @@ body { background-image: none; letter-spacing: 0; }
 .branch-line { stroke: var(--wood); stroke-width: 4; fill: none; stroke-linecap: round; }
 .branch-shadow { stroke: var(--gold); stroke-width: 7; fill: none; }.branch-leaf { fill: var(--leaf); stroke: var(--gold); stroke-width: 1; }
 .family-branches text { fill: var(--primary); }
-.couples-row { position: relative; z-index: 4; display: grid; grid-template-columns: repeat(10, 1fr); gap: 9px; margin-top: 65px; padding: 0 20px; }
+.couples-row { position: relative; z-index: 4; display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 12px; margin-top: 65px; padding: 0 20px; }
 .family-couple { display: flex; flex-direction: column; align-items: center; position: relative; }
+.couple-remove-btn { position: absolute; top: -2px; right: 4px; width: 24px; height: 24px; border-radius: 50%; background: #ef4444; color: #ffffff; border: 2px solid var(--card); display: grid; place-items: center; opacity: 0.85; transition: opacity 150ms, transform 150ms; cursor: pointer; z-index: 10; box-shadow: 0 2px 5px rgba(0,0,0,0.25); }
+.couple-remove-btn:hover { opacity: 1; transform: scale(1.15); background: #dc2626; }
 .couple-button { width: 145px; display: flex; flex-direction: column; gap: 0; border-radius: 70px 70px 20px 20px; padding: 4px 2px; transition: transform 180ms; }
 .couple-button:hover { transform: translateY(-4px); }
 .couple-portrait { position: relative; width: 132px; height: 105px; border: 4px solid var(--card); outline: 2px solid var(--portrait-border); border-radius: 70px 70px 40px 40px; background: var(--muted); box-shadow: var(--garden-shadow); }
@@ -157,9 +159,27 @@ body { background-image: none; letter-spacing: 0; }
 .children-panel h2 { font-size: 15px; text-align: center; font-weight: 400; }
 .panel-flowers { position: absolute; top: -15px; font-size: 24px; }.panel-flowers.left { left: -8px; transform: rotate(-28deg); }.panel-flowers.right { right: -8px; transform: rotate(28deg); }
 .children-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 14px; }
-.child-person { display: flex; flex-direction: column; align-items: center; max-width: 72px; }.child-portrait { width: 64px; height: 64px; border: 3px solid var(--card); outline: 1px solid var(--portrait-border); border-radius: 50%; background: var(--muted); display: grid; place-items: center; overflow: hidden; }.child-portrait img { width: 100%; height: 100%; object-fit: cover; }
+.child-person { position: relative; display: flex; flex-direction: column; align-items: center; max-width: 72px; }
+.child-remove-btn { position: absolute; top: -3px; right: -3px; width: 20px; height: 20px; border-radius: 50%; background: #ef4444; color: #ffffff; border: 2px solid var(--card); display: grid; place-items: center; opacity: 0.85; transition: opacity 150ms, transform 150ms; cursor: pointer; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.25); }
+.child-remove-btn:hover { opacity: 1; transform: scale(1.15); background: #dc2626; }
+.child-portrait { width: 64px; height: 64px; border: 3px solid var(--card); outline: 1px solid var(--portrait-border); border-radius: 50%; background: var(--muted); display: grid; place-items: center; overflow: hidden; }.child-portrait img { width: 100%; height: 100%; object-fit: cover; }
 .child-name { margin-top: -3px; z-index: 1; border-radius: 25px; background: var(--card); padding: 4px 12px; font-size: 11px; box-shadow: var(--garden-shadow); overflow-wrap: anywhere; }
 .add-child { display: flex; margin: 12px auto 0; padding: 5px 11px; border-radius: 25px; color: var(--accent-foreground); font-size: 12px; font-weight: 400; box-shadow: var(--garden-shadow); }
+
+/* Dialog Tabs & Member Management */
+.dialog-tabs-nav { display: flex; gap: 6px; border-bottom: 2px solid var(--blush); padding-bottom: 10px; margin-bottom: 16px; }
+.dialog-tab-btn { flex: 1; padding: 8px 6px; font-size: 12px; font-weight: 500; border-radius: 12px; background: transparent; border: 1px solid transparent; color: var(--muted-foreground); transition: all 150ms; text-align: center; cursor: pointer; }
+.dialog-tab-btn:hover { background: color-mix(in oklab, var(--secondary) 50%, transparent); color: var(--foreground); }
+.dialog-tab-btn.active { background: var(--secondary); color: var(--accent-foreground); font-weight: 700; border-color: var(--portrait-border); box-shadow: var(--garden-shadow); }
+.member-manage-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px; }
+.member-manage-card { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); box-shadow: var(--garden-shadow); }
+.member-manage-info { display: flex; align-items: center; gap: 10px; }
+.member-manage-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; border: 1px solid var(--portrait-border); background: var(--secondary); display: grid; place-items: center; font-weight: 700; font-size: 13px; overflow: hidden; }
+.member-manage-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.member-delete-btn { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 8px; background: color-mix(in oklab, #ef4444 15%, transparent); color: #dc2626; font-size: 12px; font-weight: 600; border: 1px solid color-mix(in oklab, #ef4444 35%, transparent); transition: all 150ms; cursor: pointer; }
+.member-delete-btn:hover { background: #ef4444; color: #fff; }
+.member-restore-btn { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 8px; background: color-mix(in oklab, #10b981 15%, transparent); color: #059669; font-size: 12px; font-weight: 600; border: 1px solid color-mix(in oklab, #10b981 35%, transparent); transition: all 150ms; cursor: pointer; }
+.member-restore-btn:hover { background: #10b981; color: #fff; }
 .wooden-sign { position: absolute; z-index: 5; background: repeating-linear-gradient(0deg, transparent 0px, transparent 24px, var(--sign-stripe) 25px, transparent 27px), var(--sign-background); border: 3px solid var(--portrait-border); border-radius: 7px; padding: 18px 15px 9px; text-align: center; font-size: 17px; line-height: 1.4; box-shadow: var(--garden-shadow); font-family: var(--font-display); }
 .hanging-sign { top: 62px; left: 3%; width: 210px; transform: rotate(-3deg); }.hanging-sign::before,.hanging-sign::after { content: ''; position: absolute; bottom: 100%; width: 3px; height: 60px; background: var(--wood); }.hanging-sign::before { left: 18px; }.hanging-sign::after { right: 18px; }.sign-leaf { position: absolute; font-size: 36px; top: -20px; }.left-leaf { left: -22px; }.right-leaf { right: -20px; transform: scaleX(-1); }
 .bottom-sign { bottom: 28px; left: 3%; transform: rotate(-7deg); width: 152px; font-size: 17px; }.bottom-sign::after { content: ''; width: 12px; height: 50px; position: absolute; top: 100%; background: var(--wood); left: 50%; z-index: -1; }
